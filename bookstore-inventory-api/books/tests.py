@@ -93,3 +93,25 @@ class BookApiTests(APITestCase):
         book = make_book()
         self.assertEqual(self.client.delete(f'/books/{book.id}').status_code, 204)
         self.assertFalse(Book.objects.exists())
+
+
+class BookFilterTests(APITestCase):
+    def setUp(self):
+        self.quijote = make_book()  # "Literatura Clásica", stock 25
+        self.low = make_book(isbn='0306406152', title='Cosmos', category='Ciencia', stock_quantity=2)
+
+    def test_search_by_category_is_partial_and_case_insensitive(self):
+        r = self.client.get('/books/search', {'category': 'literatura'})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual([b['id'] for b in r.data['results']], [self.quijote.id])
+
+    def test_search_requires_category(self):
+        self.assertEqual(self.client.get('/books/search').status_code, 400)
+
+    def test_low_stock_uses_threshold(self):
+        r = self.client.get('/books/low-stock', {'threshold': 10})
+        self.assertEqual([b['id'] for b in r.data['results']], [self.low.id])
+        self.assertEqual(self.client.get('/books/low-stock', {'threshold': 30}).data['count'], 2)
+
+    def test_low_stock_rejects_non_integer_threshold(self):
+        self.assertEqual(self.client.get('/books/low-stock', {'threshold': 'abc'}).status_code, 400)
