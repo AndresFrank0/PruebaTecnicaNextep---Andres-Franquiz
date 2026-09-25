@@ -137,4 +137,9 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 10,
     # Los Decimal se devuelven como números JSON (15.99) en vez de strings ("15.99").
     'COERCE_DECIMAL_TO_STRING': False,
+    # La API es pública (el enunciado no pide autenticación). Sin esto, DRF intenta autenticar
+    # cualquier cabecera Authorization (p. ej. la de un proxy con HTTP Basic) y responde 403.
+    'DEFAULT_AUTHENTICATION_CLASSES': [],
+    # Errores de la API: los 404 salen en español (ver books/exceptions.py).
+    'EXCEPTION_HANDLER': 'books.exceptions.json_exception_handler',
 }
