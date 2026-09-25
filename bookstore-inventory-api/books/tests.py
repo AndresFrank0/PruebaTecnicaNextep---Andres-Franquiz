@@ -1,4 +1,7 @@
+from decimal import Decimal
+
 from django.test import TestCase
+from rest_framework.test import APITestCase
 
 from .models import Book
 from .serializers import BookSerializer
@@ -49,3 +52,44 @@ class BookSerializerTests(TestCase):
 
     def test_supplier_country_must_be_iso2(self):
         self.assertIn('supplier_country', self.errors_for(supplier_country='ESP'))
+
+
+class BookApiTests(APITestCase):
+    def test_create_returns_201_without_selling_price(self):
+        r = self.client.post('/books', VALID, format='json')
+        self.assertEqual(r.status_code, 201)
+        self.assertIsNone(r.data['selling_price_local'])
+        self.assertEqual(r.data['cost_usd'], Decimal('15.99'))
+
+    def test_create_invalid_returns_400_with_field_errors(self):
+        r = self.client.post('/books', {**VALID, 'cost_usd': 0, 'isbn': '123'}, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('cost_usd', r.data)
+        self.assertIn('isbn', r.data)
+
+    def test_list_is_paginated(self):
+        for i in range(12):
+            make_book(isbn=f'{i:013d}')
+        r = self.client.get('/books')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data['count'], 12)
+        self.assertEqual(len(r.data['results']), 10)
+        self.assertIsNotNone(r.data['next'])
+
+    def test_retrieve_existing_and_missing(self):
+        book = make_book()
+        self.assertEqual(self.client.get(f'/books/{book.id}').data['title'], 'El Quijote')
+        self.assertEqual(self.client.get('/books/9999').status_code, 404)
+
+    def test_update_ignores_selling_price(self):
+        book = make_book()
+        payload = {**VALID, 'stock_quantity': 3, 'selling_price_local': 999}
+        r = self.client.put(f'/books/{book.id}', payload, format='json')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data['stock_quantity'], 3)
+        self.assertIsNone(r.data['selling_price_local'])
+
+    def test_delete(self):
+        book = make_book()
+        self.assertEqual(self.client.delete(f'/books/{book.id}').status_code, 204)
+        self.assertFalse(Book.objects.exists())
