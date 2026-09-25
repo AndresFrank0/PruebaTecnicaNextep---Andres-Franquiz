@@ -1,13 +1,15 @@
+import io
 from decimal import Decimal
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APITestCase
 from rest_framework.validators import UniqueValidator
 
+from . import services
 from .models import Book
 from .serializers import BookSerializer
 
@@ -217,3 +219,71 @@ class BookAdminTests(TestCase):
         r = self.client.get('/admin/books/book/', {'q': 'Cosmos'})
         self.assertContains(r, 'Cosmos')
         self.assertNotContains(r, 'El Quijote')
+
+
+@override_settings(DEFAULT_EXCHANGE_RATE='800.00')
+class CalculatePriceTests(APITestCase):
+    def setUp(self):
+        self.book = make_book()
+        self.url = f'/books/{self.book.id}/calculate-price'
+
+    @patch('books.services.fetch_live_rate', return_value=Decimal('855.6625'))
+    def test_calculates_and_persists_price_with_live_rate(self, _):
+        r = self.client.post(self.url)
+        self.assertEqual(r.status_code, 200)
+        body = r.json()
+        self.assertEqual(body['book_id'], self.book.id)
+        self.assertEqual(body['cost_usd'], 15.99)
+        self.assertEqual(body['exchange_rate'], 855.6625)
+        self.assertEqual(body['cost_local'], 13682.04)  # 15.99 × 855.6625 = 13682.043375
+        self.assertEqual(body['margin_percentage'], 40)
+        self.assertEqual(body['selling_price_local'], 19154.86)  # 13682.04 × 1.40 = 19154.856
+        self.assertEqual(body['currency'], 'VES')
+        self.assertEqual(body['rate_source'], 'live')
+        self.assertIn('calculation_timestamp', body)
+        self.book.refresh_from_db()
+        self.assertEqual(self.book.selling_price_local, Decimal('19154.86'))
+
+    @patch('books.services.fetch_live_rate', side_effect=OSError('API caída'))
+    def test_uses_default_rate_when_api_fails(self, _):
+        with self.assertLogs('books.services', 'WARNING'):
+            r = self.client.post(self.url)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()['rate_source'], 'default')
+        self.assertEqual(r.json()['exchange_rate'], 800.0)
+
+    @override_settings(DEFAULT_EXCHANGE_RATE='')
+    @patch('books.services.fetch_live_rate', side_effect=OSError('API caída'))
+    def test_returns_503_when_api_fails_and_no_default(self, _):
+        with self.assertLogs('books.services', 'WARNING'):
+            self.assertEqual(self.client.post(self.url).status_code, 503)
+        self.book.refresh_from_db()
+        self.assertIsNone(self.book.selling_price_local)
+
+    @patch('books.services.fetch_live_rate', side_effect=OSError('API caída'))
+    def test_invalid_default_rate_returns_503(self, _):
+        # Una tasa por defecto mal configurada no debe dar un 500 ("855,66") ni precios en 0 ("0").
+        for value in ('855,66', '0', 'abc'):
+            with self.settings(DEFAULT_EXCHANGE_RATE=value), self.assertLogs('books.services', 'ERROR'):
+                self.assertEqual(self.client.post(self.url).status_code, 503, value)
+        self.book.refresh_from_db()
+        self.assertIsNone(self.book.selling_price_local)
+
+    def test_returns_404_for_missing_book(self):
+        self.assertEqual(self.client.post('/books/9999/calculate-price').status_code, 404)
+
+    @patch('urllib.request.urlopen')
+    def test_fetch_live_rate_reads_promedio_and_sends_user_agent(self, urlopen):
+        urlopen.return_value.__enter__.return_value = io.BytesIO(
+            b'{"moneda": "USD", "fuente": "oficial", "promedio": 855.6625,'
+            b' "fechaActualizacion": "2026-09-25T00:00:00-04:00"}'
+        )
+        self.assertEqual(services.fetch_live_rate(), Decimal('855.6625'))
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.get_header('User-agent'), services.USER_AGENT)
+
+    @patch('urllib.request.urlopen')
+    def test_invalid_promedio_falls_back_to_default(self, urlopen):
+        urlopen.return_value.__enter__.return_value = io.BytesIO(b'{"promedio": null}')
+        with self.assertLogs('books.services', 'WARNING'):
+            self.assertEqual(services.get_exchange_rate(), (Decimal('800.00'), 'default'))

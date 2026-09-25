@@ -2,7 +2,9 @@ from django.db import IntegrityError, transaction
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
 
+from . import services
 from .models import Book
 from .serializers import BookSerializer
 
@@ -52,3 +54,8 @@ class BookViewSet(viewsets.ModelViewSet):
         except ValueError:
             raise ValidationError({'threshold': 'Debe ser un número entero.'}) from None
         return self._paginated(self.get_queryset().filter(stock_quantity__lte=threshold))
+
+    @action(detail=True, methods=['post'], url_path='calculate-price')
+    def calculate_price(self, request, pk=None):
+        """POST /books/{id}/calculate-price: precio de venta en Bs con la tasa BCV (se guarda en el libro)."""
+        return Response(services.calculate_price(self.get_object()))
