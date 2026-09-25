@@ -18,7 +18,7 @@ USER_AGENT = 'bookstore-inventory-api/1.0'
 
 class ExchangeRateUnavailable(APIException):
     status_code = 503
-    default_detail = 'Servicio de tasas de cambio no disponible y no hay tasa por defecto configurada.'
+    default_detail = 'Servicio de tasas de cambio no disponible y no hay una tasa por defecto válida.'
     default_code = 'exchange_rate_unavailable'
 
 
@@ -58,6 +58,9 @@ def get_exchange_rate():
 def calculate_price(book):
     """Calcula el precio de venta en Bs (costo × tasa × 1,40), lo guarda en el libro y devuelve el desglose."""
     rate, source = get_exchange_rate()
+    # La consulta a la API puede tardar segundos: se relee el costo por si otra petición lo cambió.
+    # Si en ese tiempo borraron el libro, lanza Book.DoesNotExist (la vista responde 404).
+    book.refresh_from_db(fields=['cost_usd'])
     cost_local = (book.cost_usd * rate).quantize(CENTS, ROUND_HALF_UP)
     selling_price = (cost_local * (1 + Decimal(MARGIN_PERCENTAGE) / 100)).quantize(CENTS, ROUND_HALF_UP)
 

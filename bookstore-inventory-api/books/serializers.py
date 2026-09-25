@@ -28,3 +28,9 @@ class BookSerializer(serializers.ModelSerializer):
             data = copy.copy(data)
             data['isbn'] = ISBN_SEPARATORS.sub('', data['isbn']).upper()
         return super().to_internal_value(data)
+
+    def update(self, instance, validated_data):
+        # El precio de venta guardado se calculó con el costo anterior: si el costo cambia, deja de valer.
+        if validated_data.get('cost_usd', instance.cost_usd) != instance.cost_usd:
+            validated_data['selling_price_local'] = None
+        return super().update(instance, validated_data)

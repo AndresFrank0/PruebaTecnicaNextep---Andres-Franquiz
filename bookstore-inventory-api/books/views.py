@@ -1,7 +1,7 @@
 from django.db import IntegrityError, transaction
-from rest_framework import viewsets
+from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 from . import services
@@ -55,7 +55,12 @@ class BookViewSet(viewsets.ModelViewSet):
             raise ValidationError({'threshold': 'Debe ser un número entero.'}) from None
         return self._paginated(self.get_queryset().filter(stock_quantity__lte=threshold))
 
-    @action(detail=True, methods=['post'], url_path='calculate-price')
+    # Serializer sin campos: el endpoint no lee el cuerpo, así que OPTIONS y la browsable API
+    # no deben ofrecer el formulario de Book.
+    @action(detail=True, methods=['post'], url_path='calculate-price', serializer_class=serializers.Serializer)
     def calculate_price(self, request, pk=None):
         """POST /books/{id}/calculate-price: precio de venta en Bs con la tasa BCV (se guarda en el libro)."""
-        return Response(services.calculate_price(self.get_object()))
+        try:
+            return Response(services.calculate_price(self.get_object()))
+        except Book.DoesNotExist:  # lo borraron mientras se consultaba la API
+            raise NotFound() from None

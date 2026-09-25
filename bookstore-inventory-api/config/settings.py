@@ -140,7 +140,8 @@ REST_FRAMEWORK = {
     # La API es pública (el enunciado no pide autenticación). Sin esto, DRF intenta autenticar
     # cualquier cabecera Authorization (p. ej. la de un proxy con HTTP Basic) y responde 403.
     'DEFAULT_AUTHENTICATION_CLASSES': [],
-    # Errores de la API: los 404 salen en español (ver books/exceptions.py).
+    # Errores de la API: 404 en español, 400 para peticiones que superan los límites de Django
+    # y 500 en JSON (ver books/exceptions.py).
     'EXCEPTION_HANDLER': 'books.exceptions.json_exception_handler',
 }
 
