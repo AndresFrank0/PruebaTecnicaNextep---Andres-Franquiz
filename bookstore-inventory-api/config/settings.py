@@ -140,6 +140,15 @@ REST_FRAMEWORK = {
     # La API es pública (el enunciado no pide autenticación). Sin esto, DRF intenta autenticar
     # cualquier cabecera Authorization (p. ej. la de un proxy con HTTP Basic) y responde 403.
     'DEFAULT_AUTHENTICATION_CLASSES': [],
-    # Errores de la API: los 404 salen en español (ver books/exceptions.py).
+    # Errores de la API: 404 en español, 400 para peticiones que superan los límites de Django
+    # y 500 en JSON (ver books/exceptions.py).
     'EXCEPTION_HANDLER': 'books.exceptions.json_exception_handler',
 }
+
+
+# Tasa de cambio (ver books/services.py)
+
+# Tasa oficial del BCV (bolívares por 1 USD), la misma fuente que usa la app ACuanto.
+EXCHANGE_API_URL = os.environ.get('EXCHANGE_API_URL', 'https://ve.dolarapi.com/v1/dolares/oficial')
+# Tasa que se usa si la API falla (BCV, 25/09/2026), con punto decimal. Vacía, no hay respaldo (503).
+DEFAULT_EXCHANGE_RATE = os.environ.get('DEFAULT_EXCHANGE_RATE', '855.6625')
