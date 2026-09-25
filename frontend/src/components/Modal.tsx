@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from "react";
+import { Toaster } from "sonner";
 
 interface Props {
   open: boolean;
@@ -35,6 +36,10 @@ export function Modal({ open, title, onClose, children }: Props) {
         {/* Los hijos se montan solo mientras está abierto: cada apertura empieza de cero. */}
         {open && children}
       </article>
+      {/* showModal() sube el diálogo a la top layer y el Toaster global queda detrás del fondo
+          (ningún z-index lo saca). Este segundo Toaster muestra encima los toasts de mientras
+          está abierto; el global también los recibe, así que siguen visibles al cerrarlo. */}
+      {open && <Toaster richColors position="top-right" />}
     </dialog>
   );
 }
