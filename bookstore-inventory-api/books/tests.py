@@ -220,6 +220,22 @@ class BookAdminTests(TestCase):
         self.assertNotContains(r, 'El Quijote')
 
 
+class SampleBooksFixtureTests(APITestCase):
+    fixtures = ['sample_books']
+
+    def test_fixture_books_pass_validation(self):
+        # loaddata no valida: cada libro de ejemplo debe cumplir las mismas reglas que la API.
+        for book in Book.objects.all():
+            serializer = BookSerializer(book, data=BookSerializer(book).data)
+            self.assertTrue(serializer.is_valid(), (book.isbn, serializer.errors))
+
+    def test_fixture_matches_the_documented_counts(self):
+        # Cifras que citan el README y el QA de la SPA: 12 libros, 6 con stock bajo, 4 de "literatura".
+        self.assertEqual(self.client.get('/books').data['count'], 12)
+        self.assertEqual(self.client.get('/books/low-stock').data['count'], 6)
+        self.assertEqual(self.client.get('/books/search', {'category': 'literatura'}).data['count'], 4)
+
+
 @override_settings(DEFAULT_EXCHANGE_RATE='800.00')
 class CalculatePriceTests(APITestCase):
     def setUp(self):
