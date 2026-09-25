@@ -133,9 +133,8 @@ class BookApiTests(APITestCase):
 
     def test_other_integrity_errors_are_not_reported_as_isbn(self):
         # Solo el choque de ISBN se convierte en 400; cualquier otro IntegrityError sigue siendo un 500.
-        self.client.raise_request_exception = False
         error = IntegrityError('CHECK constraint failed: stock_quantity')
-        with patch.object(Book, 'save', side_effect=error):
+        with patch.object(Book, 'save', side_effect=error), self.assertLogs('books.exceptions', 'ERROR'):
             r = self.client.post('/books', VALID, format='json')
         self.assertEqual(r.status_code, 500)
 
@@ -287,3 +286,10 @@ class CalculatePriceTests(APITestCase):
         urlopen.return_value.__enter__.return_value = io.BytesIO(b'{"promedio": null}')
         with self.assertLogs('books.services', 'WARNING'):
             self.assertEqual(services.get_exchange_rate(), (Decimal('800.00'), 'default'))
+
+    @patch('books.services.calculate_price', side_effect=RuntimeError('boom'))
+    def test_unexpected_error_returns_json_500(self, _):
+        with self.assertLogs('books.exceptions', 'ERROR'):
+            r = self.client.post(self.url)
+        self.assertEqual(r.status_code, 500)
+        self.assertEqual(r.json()['detail'], 'Error interno del servidor.')
