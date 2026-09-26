@@ -140,6 +140,10 @@ REST_FRAMEWORK = {
     # La API es pública (el enunciado no pide autenticación). Sin esto, DRF intenta autenticar
     # cualquier cabecera Authorization (p. ej. la de un proxy con HTTP Basic) y responde 403.
     'DEFAULT_AUTHENTICATION_CLASSES': [],
+    # Solo JSON: un formulario HTML de otra web puede enviar urlencoded, multipart o text/plain sin
+    # preflight CORS y, sin autenticación, no hay chequeo CSRF; aceptarlos permitiría crear libros
+    # desde cualquier página. La SPA y Postman envían JSON. El resto recibe 415.
+    'DEFAULT_PARSER_CLASSES': ['rest_framework.parsers.JSONParser'],
     # Errores de la API: 404 en español, 400 para peticiones que superan los límites de Django
     # y 500 en JSON (ver books/exceptions.py).
     'EXCEPTION_HANDLER': 'books.exceptions.json_exception_handler',
