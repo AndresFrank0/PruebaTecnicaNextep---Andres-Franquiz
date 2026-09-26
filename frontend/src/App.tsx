@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Book, BookFilter } from "./api";
+import { ApiError, type Book, type BookFilter } from "./api";
 import { BookDetail } from "./components/BookDetail";
 import { BookForm } from "./components/BookForm";
 import { BookTable } from "./components/BookTable";
@@ -18,6 +18,11 @@ export default function App() {
 
   const books = useBooks(filter, page);
   const deleteBook = useDeleteBook();
+  // La página ya no existe (se borró o se editó su último libro, aquí o en otra pestaña): se retrocede
+  // una página hasta dar con una que exista (la 1 siempre existe). Se ajusta durante el render, como
+  // recomienda React, y no en un efecto. Solo con la respuesta ya recibida: al volver a una página que
+  // dio 404, TanStack entrega ese error viejo mientras la repide.
+  if (page > 1 && !books.isFetching && books.error instanceof ApiError && books.error.status === 404) setPage(page - 1);
 
   function changeFilter(next: BookFilter) {
     setFilter(next);
@@ -26,12 +31,11 @@ export default function App() {
 
   function confirmDelete() {
     if (!toDelete) return;
-    deleteBook.mutate(toDelete.id, {
-      onSuccess: () => {
-        // Si se borra la última fila de una página, esa página deja de existir (DRF respondería 404).
-        if (books.data?.results.length === 1 && page > 1) setPage(page - 1);
-        setToDelete(null);
-      },
+    const { id } = toDelete;
+    deleteBook.mutate(id, {
+      // Solo se cierra si el diálogo sigue siendo el de este libro. Si era la última fila de la página,
+      // la regla de arriba lleva a la anterior cuando la lista refrescada responde 404.
+      onSuccess: () => setToDelete((current) => (current?.id === id ? null : current)),
     });
   }
 
@@ -53,7 +57,8 @@ export default function App() {
         <p aria-busy="true">Cargando libros…</p>
       ) : (
         <>
-          {books.isFetching && <progress />}
+          {/* Siempre ocupa su sitio: al refrescar solo se hace visible y la tabla no salta. */}
+          <progress aria-label="Actualizando" style={{ visibility: books.isFetching ? "visible" : "hidden" }} />
           <BookTable books={books.data.results} onDetail={setDetailId} onEdit={setFormId} onDelete={setToDelete} />
           <Pagination page={page} count={books.data.count} onPage={setPage} />
         </>
@@ -72,7 +77,7 @@ export default function App() {
         title="Eliminar libro"
         message={`¿Seguro que deseas eliminar «${toDelete?.title}»? Esta acción no se puede deshacer.`}
         confirmLabel="Eliminar"
-        busy={deleteBook.isPending}
+        busy={deleteBook.isPending && deleteBook.variables === toDelete?.id}
         onCancel={() => setToDelete(null)}
         onConfirm={confirmDelete}
       />

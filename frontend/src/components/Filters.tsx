@@ -8,7 +8,8 @@ interface Props {
 
 export function Filters({ filter, onChange }: Props) {
   const [category, setCategory] = useState("");
-  const [threshold, setThreshold] = useState(LOW_STOCK_THRESHOLD);
+  // Texto, como la categoría: un number controlado no deja vaciar el campo (saltaba a 0 y quedaba "05").
+  const [threshold, setThreshold] = useState(String(LOW_STOCK_THRESHOLD));
 
   return (
     <article>
@@ -34,16 +35,18 @@ export function Filters({ filter, onChange }: Props) {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            onChange({ kind: "lowStock", threshold });
+            setCategory("");
+            onChange({ kind: "lowStock", threshold: Number(threshold) });
           }}
         >
           <fieldset role="group">
             <input
               type="number"
               min={0}
+              required
               aria-label="Umbral de stock bajo"
               value={threshold}
-              onChange={(e) => setThreshold(e.target.valueAsNumber || 0)}
+              onChange={(e) => setThreshold(e.target.value)}
             />
             <button type="submit" className="secondary">Ver stock bajo</button>
           </fieldset>
@@ -54,6 +57,7 @@ export function Filters({ filter, onChange }: Props) {
           className="outline"
           onClick={() => {
             setCategory("");
+            setThreshold(String(LOW_STOCK_THRESHOLD));
             onChange({ kind: "all" });
           }}
         >

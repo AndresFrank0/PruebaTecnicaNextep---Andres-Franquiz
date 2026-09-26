@@ -14,7 +14,11 @@ export function Modal({ open, title, onClose, children }: Props) {
 
   useEffect(() => {
     const dialog = ref.current;
-    if (open && !dialog?.open) dialog?.showModal();
+    if (open && !dialog?.open) {
+      dialog?.showModal();
+      // showModal() enfoca lo primero enfocable (el enlace Cerrar o el <article> con scroll): mejor el primer campo.
+      dialog?.querySelector<HTMLElement>("input, select, textarea")?.focus();
+    }
     if (!open && dialog?.open) dialog.close();
   }, [open]);
 

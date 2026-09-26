@@ -3,3 +3,13 @@ td [role="group"] button {
   padding: 0.3rem 0.6rem;
   font-size: 0.85rem;
 }
+
+/* Con un modal abierto, la página de fondo no se desplaza. El hueco de la barra de desplazamiento
+   se reserva siempre: si no, al ocultarla el contenido se corre a la derecha en cada modal. */
+html {
+  scrollbar-gutter: stable;
+}
+
+html:has(dialog[open]) {
+  overflow: hidden;
+}

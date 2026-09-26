@@ -1,5 +1,7 @@
-const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+// || y no ??: una VITE_API_URL vacía también usa el valor por defecto.
+const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
+// Debe coincidir con REST_FRAMEWORK["PAGE_SIZE"] del backend: Pagination calcula el total con él.
 export const PAGE_SIZE = 10;
 export const LOW_STOCK_THRESHOLD = 10;
 
@@ -43,12 +45,18 @@ export type BookFilter =
   | { kind: "category"; category: string }
   | { kind: "lowStock"; threshold: number };
 
+// Nombres de campo de la API tal como los ve el usuario en los toasts de error.
+const FIELD_LABELS: Record<string, string> = {
+  title: "Título", author: "Autor", isbn: "ISBN", cost_usd: "Costo", stock_quantity: "Stock",
+  category: "Categoría", supplier_country: "País", threshold: "Umbral",
+};
+
 function errorMessage(status: number, body: unknown): string {
   if (body && typeof body === "object") {
     if ("detail" in body) return String(body.detail);
     // Errores de validación de DRF: { campo: ["mensaje", ...] }
     return Object.entries(body)
-      .map(([field, messages]) => `${field}: ${[messages].flat().join(" ")}`)
+      .map(([field, messages]) => `${FIELD_LABELS[field] ?? field}: ${[messages].flat().join(" ")}`)
       .join(" · ");
   }
   return `Error ${status}`;
@@ -69,14 +77,21 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${BASE_URL}${path}`, {
-      headers: { "Content-Type": "application/json" },
+      // Content-Type solo con cuerpo: en un GET obliga al navegador a un preflight CORS extra.
+      headers: init?.body ? { "Content-Type": "application/json" } : undefined,
+      // Sin esto, una API colgada deja la UI cargando para siempre.
+      signal: AbortSignal.timeout(10_000),
       ...init,
     });
-  } catch {
-    throw new ApiError(0, { detail: "No se pudo conectar con la API." });
+  } catch (error) {
+    // AbortSignal.timeout rechaza con un TimeoutError; cualquier otro error es de red.
+    const timedOut = error instanceof DOMException && error.name === "TimeoutError";
+    throw new ApiError(0, { detail: timedOut ? "La API no respondió a tiempo." : "No se pudo conectar con la API." });
   }
-  const body = response.status === 204 ? null : await response.json().catch(() => null);
+  const body = response.status === 204 ? null : await response.json().catch(() => undefined);
   if (!response.ok) throw new ApiError(response.status, body);
+  // Un 2xx sin JSON no viene de la API (p. ej. VITE_API_URL apunta al servidor de la SPA).
+  if (body === undefined) throw new ApiError(response.status, { detail: "La respuesta no es de la API." });
   return body as T;
 }
 
@@ -100,5 +115,10 @@ export const api = {
     request<Book>(`/books/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteBook: (id: number) => request<null>(`/books/${id}`, { method: "DELETE" }),
   calculatePrice: (id: number) =>
-    request<PriceCalculation>(`/books/${id}/calculate-price`, { method: "POST" }),
+    request<PriceCalculation>(`/books/${id}/calculate-price`, {
+      method: "POST",
+      // Si DolarAPI no responde, el backend espera hasta 5 s por cada una de sus IP antes de usar la
+      // tasa por defecto. Con 10 s, la SPA diría "Sin conexión" con el precio ya guardado.
+      signal: AbortSignal.timeout(30_000),
+    }),
 };

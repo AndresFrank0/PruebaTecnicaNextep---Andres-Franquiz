@@ -4,7 +4,7 @@ import { useBook, useSaveBook } from "../hooks";
 
 const ISBN_RE = /^(\d{9}[\dX]|\d{13})$/;
 // Mismo patrón que ISBN_SEPARATORS del backend: quita espacios y guiones (también los Unicode).
-const normalizeIsbn = (value: string) => value.replace(/[\s‐-―−-]/g, "").toUpperCase();
+const normalizeIsbn = (value: string) => value.replace(/[\s\u2010-\u2015\u2212-]/g, "").toUpperCase();
 
 interface Props {
   bookId: number | null;
@@ -41,11 +41,11 @@ export function BookForm({ bookId, onDone }: Props) {
     <form onSubmit={handleSubmit}>
       <label>
         Título
-        <input name="title" required maxLength={255} defaultValue={book?.title} />
+        <input name="title" required pattern=".*\S.*" title="No puede estar en blanco" maxLength={255} defaultValue={book?.title} autoFocus />
       </label>
       <label>
         Autor
-        <input name="author" required maxLength={255} defaultValue={book?.author} />
+        <input name="author" required pattern=".*\S.*" title="No puede estar en blanco" maxLength={255} defaultValue={book?.author} />
       </label>
       <label>
         ISBN
@@ -66,17 +66,17 @@ export function BookForm({ bookId, onDone }: Props) {
       <div className="grid">
         <label>
           Costo (USD)
-          <input name="cost_usd" type="number" required min="0.01" step="0.01" defaultValue={book?.cost_usd} />
+          <input name="cost_usd" type="number" required min="0.01" max="99999999.99" step="0.01" defaultValue={book?.cost_usd} />
         </label>
         <label>
           Stock
-          <input name="stock_quantity" type="number" required min="0" step="1" defaultValue={book?.stock_quantity ?? 0} />
+          <input name="stock_quantity" type="number" required min="0" max="2147483647" step="1" defaultValue={book?.stock_quantity ?? 0} />
         </label>
       </div>
       <div className="grid">
         <label>
           Categoría
-          <input name="category" required maxLength={100} defaultValue={book?.category} />
+          <input name="category" required pattern=".*\S.*" title="No puede estar en blanco" maxLength={100} defaultValue={book?.category} />
         </label>
         <label>
           País proveedor (ISO)
