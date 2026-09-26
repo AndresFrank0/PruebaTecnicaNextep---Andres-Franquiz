@@ -1,7 +1,9 @@
 import io
+import json
 from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
+from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib.auth.models import User
@@ -141,11 +143,25 @@ class BookApiTests(APITestCase):
             r = self.client.post('/books', VALID, format='json')
         self.assertEqual(r.status_code, 500)
 
-    def test_multipart_with_large_file_is_accepted(self):
-        # Más de 2,5 MB: Django lo guarda en disco (TemporaryUploadedFile), que no admite deepcopy.
-        big = SimpleUploadedFile('big.bin', b'0' * (3 * 1024 * 1024))
-        r = self.client.post('/books', {**VALID, 'junk': big}, format='multipart')
-        self.assertEqual(r.status_code, 201)
+    def test_only_json_bodies_are_accepted(self):
+        # Un formulario HTML de otra web puede enviar estos tres tipos sin preflight CORS, y sin
+        # autenticación no hay chequeo CSRF: si la API los aceptara, cualquier página crearía libros.
+        # Un ISBN distinto en cada uno: sin la corrección, fallarían por aceptarse y no por duplicados.
+        big = SimpleUploadedFile('big.bin', b'0' * (3 * 1024 * 1024))  # más de 2,5 MB (Task 1.4)
+        responses = {
+            'multipart': self.client.post('/books', {**VALID, 'junk': big}, format='multipart'),
+            'urlencoded': self.client.post(
+                '/books', urlencode({**VALID, 'isbn': '9780306406157'}),
+                content_type='application/x-www-form-urlencoded',
+            ),
+            'text/plain': self.client.post(
+                '/books', json.dumps({**VALID, 'isbn': '9780262033848'}), content_type='text/plain',
+            ),
+        }
+        for name, response in responses.items():
+            with self.subTest(name):
+                self.assertEqual(response.status_code, 415)
+        self.assertFalse(Book.objects.exists())
 
     def test_foreign_basic_auth_header_is_ignored(self):
         # P. ej. un nginx con HTTP Basic delante: la API es pública y no debe responder 403.
@@ -178,9 +194,10 @@ class BookApiTests(APITestCase):
 
     def test_too_many_fields_returns_400(self):
         # Más de DATA_UPLOAD_MAX_NUMBER_FIELDS (1000): Django lo trata como error del cliente y lo
-        # registra en su logger de seguridad. No es un error del servidor.
+        # registra en su logger de seguridad. No es un error del servidor. Van en la query string:
+        # un cuerpo que no es JSON se rechaza con 415 antes de llegar a parsearse.
         with self.assertLogs('django.security', 'ERROR'):
-            r = self.client.post('/books', {f'f{i}': 'x' for i in range(1001)}, format='multipart')
+            r = self.client.get('/books', {f'f{i}': 'x' for i in range(1001)})
         self.assertEqual(r.status_code, 400)
 
     def test_unexpected_error_rolls_back_with_atomic_requests(self):
